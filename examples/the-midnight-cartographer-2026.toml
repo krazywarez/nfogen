@@ -1,0 +1,33 @@
+group = "KRZ"
+site  = "krz.sh"
+
+title      = "The.Midnight.Cartographer.2026.1080p.BluRay.x264-KRZ"
+date       = "2026-08-08"
+type       = "MOVIE"
+source     = "BluRay (Retail)"
+format     = "Matroska (MKV)"
+video      = "x264 @ 8500 kbps, 23.976 fps"
+audio      = "DTS-HD MA 5.1 @ 1509 kbps (English)"
+resolution = "1920x1080p"
+language   = "English (subs: EN, ES, FR)"
+genre      = "Drama / Mystery"
+runtime    = "1h 52m"
+size       = "8.42 GiB"
+files      = "42 x 200 MB"
+url        = "imdb.com/title/tt9999999"
+
+notes = """
+A quiet cartographer maps a city that rearranges itself
+after midnight. Encoded from retail BluRay, untouched
+audio, nothing re-encoded twice.
+
+Source   : COMPLETE.BLURAY (thanks to the supplier)
+Encoder  : x264 10-bit, --preset veryslow --crf 18
+Chapters : yes, named
+Subtitles: muxed, forced flags set where needed
+
+Nothing to prove, just a clean encode. Fix it yourself
+if you can do better.
+"""
+
+greets = ["the-scene", "0day", "our-suppliers", "you"]
