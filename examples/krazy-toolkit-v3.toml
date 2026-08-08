@@ -1,0 +1,43 @@
+group    = "KRZ"
+site     = "krz.sh"
+style    = "double"
+layout   = "panel"
+presents = true
+footer   = true
+logo     = "examples/krz-logo.asc"
+logo_encoding = "utf8"
+
+title      = "Krazy.Toolkit.v3.2.1-KRZ"
+date       = "2026-08-08"
+
+# release information (left panel)
+cracker    = "Lime"
+supplier   = "The Witch King"
+packager   = "Renegade Chemist"
+protection = "Serial + Doc Check"
+install    = "unzip, run SETUP.EXE, use keygen"
+rating     = "10/10"
+
+# game / program information (right panel)
+type       = "APP"
+publisher  = "Krazy Softworks"
+format     = "ZIP / self-extracting"
+disks      = "7 x 1.44 HD"
+size       = "9.84 MB"
+files      = "42 x 240 KB"
+url        = "krz.sh/toolkit"
+
+notes = """
+Here is the release everyone has been waiting for. The
+complete Krazy Toolkit, cracked clean -- no nag screens,
+no phone-home, no time limit. Tested on a fresh install.
+
+Install : unzip to a folder of your choice
+          run SETUP.EXE and follow the prompts
+          apply the included keygen when asked for a serial
+
+Greets to everyone who keeps the scene alive. Fix it
+yourself if you think you can do better.
+"""
+
+greets = ["razor-blade", "jack", "knightmare", "stingray", "the-couriers"]
