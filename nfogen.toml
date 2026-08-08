@@ -10,7 +10,7 @@ banner_text = "NFOGEN"
 footer      = true
 footer_text = "nfogen  //  krazy warez  //  krz.sh"
 
-title      = "nfogen 1.2"
+title      = "nfogen 1.2.2"
 type       = "CLI / library"
 publisher  = "krazy warez"
 language   = "Python 3.11+  (any 3.x with a JSON config)"
