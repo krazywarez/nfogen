@@ -96,7 +96,7 @@ def load_config(explicit: str | None) -> dict:
     """Load defaults from a TOML or JSON file. Returns {} if none found."""
     path = None
     if explicit:
-        path = Path(explicit)  # NOSONAR local CLI: the user's own path, no trust boundary
+        path = Path(explicit)
         if not path.exists():
             sys.exit(f"nfogen: config not found: {explicit}")
     else:
@@ -104,7 +104,7 @@ def load_config(explicit: str | None) -> dict:
     if path is None:
         return {}
 
-    text = path.read_text(encoding="utf-8")  # NOSONAR local CLI: the user's own path
+    text = path.read_text(encoding="utf-8")
     if path.suffix == ".json":
         return json.loads(text)
     try:
@@ -121,12 +121,12 @@ _MI_TYPE = "@type"  # mediainfo track-type key
 def load_mediainfo(path: str) -> dict:
     """Read a `mediainfo --Output=JSON` dump (or run mediainfo on a media file)
     and return values for the video/audio/resolution/size/runtime/format keys."""
-    p = Path(path)  # NOSONAR local CLI: the user's own path, no trust boundary
+    p = Path(path)
     if p.suffix.lower() == ".json":
-        raw = p.read_text(encoding="utf-8")  # NOSONAR local CLI: the user's own path
+        raw = p.read_text(encoding="utf-8")
     else:
         try:
-            proc = subprocess.run(["mediainfo", "--Output=JSON", str(p)],  # NOSONAR local CLI: the user's own file
+            proc = subprocess.run(["mediainfo", "--Output=JSON", str(p)],
                                   capture_output=True, text=True, check=True)
         except FileNotFoundError:
             sys.exit("nfogen: mediainfo not installed; pass a JSON dump to --mediainfo")
@@ -633,7 +633,7 @@ def _resolve_logo(args, config: dict, group: str) -> str | None:
     if logo_path:
         enc = args.logo_encoding or config.get("logo_encoding") or "cp437"
         try:
-            return Path(logo_path).read_text(encoding=enc, errors="replace")  # NOSONAR local CLI: the user's own path
+            return Path(logo_path).read_text(encoding=enc, errors="replace")
         except FileNotFoundError:
             sys.exit(f"nfogen: logo not found: {logo_path}")
     if _resolve(args.banner, config, "banner", False):
@@ -666,11 +666,11 @@ def _write_output(text: str, args) -> None:
     if args.encoding == "cp437":
         raw = text.encode("cp437", errors="replace")
         if args.output:
-            Path(args.output).write_bytes(raw)  # NOSONAR local CLI: the user's own path
+            Path(args.output).write_bytes(raw)
         else:
             sys.stdout.buffer.write(raw)
     elif args.output:
-        Path(args.output).write_text(text, encoding="utf-8")  # NOSONAR local CLI: the user's own path
+        Path(args.output).write_text(text, encoding="utf-8")
     else:
         sys.stdout.write(text)
 
