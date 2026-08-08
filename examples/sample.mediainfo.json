@@ -1,0 +1,13 @@
+{
+  "media": {
+    "track": [
+      { "@type": "General", "Format": "Matroska", "FileSize": "9040412672", "Duration": "6742.038" },
+      { "@type": "Video", "Format": "AVC", "Encoded_Library_Name": "x264",
+        "Width": "1920", "Height": "1080", "BitRate": "8500000", "FrameRate": "23.976" },
+      { "@type": "Audio", "Format": "DTS", "Channels": "6", "BitRate": "1509000", "Language": "en" },
+      { "@type": "Text", "Language": "en" },
+      { "@type": "Text", "Language": "es" },
+      { "@type": "Text", "Language": "fr" }
+    ]
+  }
+}

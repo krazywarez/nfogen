@@ -1,0 +1,12 @@
+# RAZOR-era look: double box, two-column panel, generated banner + presents,
+# and the classic disclaimer footer. Bring your own title and fields.
+style    = "double"
+layout   = "panel"
+width    = 79
+presents = true
+banner   = true
+footer   = true
+footer_text = """
+SUPPORT THE COMPANIES THAT PRODUCE QUALITY SOFTWARE
+if you enjoyed this release, buy the original!
+"""

@@ -10,11 +10,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import textwrap
 from datetime import date
 from itertools import zip_longest
 from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
 
 # --- field schema ------------------------------------------------------------
 # One source of truth. Drives argparse flags, interactive prompts, and render.
@@ -112,6 +115,104 @@ def load_config(explicit: str | None) -> dict:
     return tomllib.loads(text)
 
 
+# --- mediainfo import --------------------------------------------------------
+def load_mediainfo(path: str) -> dict:
+    """Read a `mediainfo --Output=JSON` dump (or run mediainfo on a media file)
+    and return values for the video/audio/resolution/size/runtime/format keys."""
+    p = Path(path)
+    if p.suffix.lower() == ".json":
+        raw = p.read_text(encoding="utf-8")
+    else:
+        try:
+            proc = subprocess.run(["mediainfo", "--Output=JSON", str(p)],
+                                  capture_output=True, text=True, check=True)
+        except FileNotFoundError:
+            sys.exit("nfogen: mediainfo not installed; pass a JSON dump to --mediainfo")
+        except subprocess.CalledProcessError as e:
+            sys.exit(f"nfogen: mediainfo failed: {(e.stderr or '').strip()}")
+        raw = proc.stdout
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError:
+        sys.exit(f"nfogen: not valid mediainfo JSON: {path}")
+    return _extract_media(doc)
+
+
+def _mi_int(x) -> str:
+    try:
+        return str(int(float(str(x).replace(" ", ""))))
+    except ValueError:
+        return str(x)
+
+
+def _mi_size(b) -> str:
+    try:
+        n = float(b)
+    except (TypeError, ValueError):
+        return str(b)
+    for unit, div in (("GiB", 1 << 30), ("MiB", 1 << 20), ("KiB", 1 << 10)):
+        if n >= div:
+            return f"{n / div:.2f} {unit}"
+    return f"{int(n)} B"
+
+
+def _mi_duration(s) -> str:
+    try:
+        sec = int(float(s))
+    except (TypeError, ValueError):
+        return str(s)
+    h, m = sec // 3600, (sec % 3600) // 60
+    return f"{h}h {m:02d}m" if h else f"{m}m {sec % 60:02d}s"
+
+
+def _extract_media(doc: dict) -> dict:
+    tracks = (doc.get("media") or {}).get("track") or []
+    g = next((t for t in tracks if t.get("@type") == "General"), {})
+    v = next((t for t in tracks if t.get("@type") == "Video"), {})
+    auds = [t for t in tracks if t.get("@type") == "Audio"]
+    txts = [t for t in tracks if t.get("@type") == "Text"]
+    a = auds[0] if auds else {}
+    channels = {"1": "1.0", "2": "2.0", "6": "5.1", "8": "7.1"}
+    out: dict = {}
+
+    if g.get("Format"):
+        out["format"] = g["Format"]
+    if g.get("FileSize"):
+        out["size"] = _mi_size(g["FileSize"])
+    if g.get("Duration") or v.get("Duration"):
+        out["runtime"] = _mi_duration(g.get("Duration") or v.get("Duration"))
+
+    if v:
+        parts = [v.get("Encoded_Library_Name") or v.get("Format")]
+        if v.get("BitRate"):
+            parts.append(f"{int(float(v['BitRate'])) // 1000} kbps")
+        if v.get("FrameRate"):
+            parts.append(f"{float(v['FrameRate']):g} fps")
+        out["video"] = ", ".join(p for p in parts if p)
+        if v.get("Width") and v.get("Height"):
+            out["resolution"] = f"{_mi_int(v['Width'])}x{_mi_int(v['Height'])}"
+
+    if a:
+        parts = [a.get("Format")]
+        if a.get("Channels"):
+            parts.append(channels.get(str(a["Channels"]), f"{a['Channels']}ch"))
+        if a.get("BitRate"):
+            parts.append(f"{int(float(a['BitRate'])) // 1000} kbps")
+        audio = ", ".join(p for p in parts if p)
+        if a.get("Language"):
+            audio = f"{audio} ({a['Language']})" if audio else a["Language"]
+        out["audio"] = audio
+
+    subs = list(dict.fromkeys(t.get("Language") for t in txts if t.get("Language")))
+    lang = a.get("Language") or ""
+    if subs:
+        out["language"] = (f"{lang} (subs: {', '.join(subs)})").strip()
+    elif lang:
+        out["language"] = lang
+
+    return {k: val for k, val in out.items() if val}
+
+
 # --- interactive -------------------------------------------------------------
 def prompt_missing(data: dict, force_all: bool) -> None:
     """Fill fields from stdin. Prompts every field when force_all, else only
@@ -146,6 +247,43 @@ def _col_widths(available: int, fracs: list[float]) -> list[int]:
     widths = [max(4, int(available * f)) for f in fracs[:-1]]
     widths.append(available - sum(widths))
     return widths
+
+
+# A compact 5-row block font for the banner generator. Each glyph is five
+# rows joined by "/". Uppercase letters, digits, space, and a few symbols.
+_FONT = {
+    "A": " ### /#   #/#####/#   #/#   #", "B": "#### /#   #/#### /#   #/#### ",
+    "C": " ####/#    /#    /#    / ####", "D": "#### /#   #/#   #/#   #/#### ",
+    "E": "#####/#    /###  /#    /#####", "F": "#####/#    /###  /#    /#    ",
+    "G": " ####/#    /#  ##/#   #/ ####", "H": "#   #/#   #/#####/#   #/#   #",
+    "I": "#####/  #  /  #  /  #  /#####", "J": "#####/   # /   # /#  # / ##  ",
+    "K": "#   #/#  # /###  /#  # /#   #", "L": "#    /#    /#    /#    /#####",
+    "M": "#   #/## ##/# # #/#   #/#   #", "N": "#   #/##  #/# # #/#  ##/#   #",
+    "O": " ### /#   #/#   #/#   #/ ### ", "P": "#### /#   #/#### /#    /#    ",
+    "Q": " ### /#   #/# # #/#  # / ## #", "R": "#### /#   #/#### /#  # /#   #",
+    "S": " ####/#    / ### /    #/#### ", "T": "#####/  #  /  #  /  #  /  #  ",
+    "U": "#   #/#   #/#   #/#   #/ ### ", "V": "#   #/#   #/#   #/ # # /  #  ",
+    "W": "#   #/#   #/# # #/## ##/#   #", "X": "#   #/ # # /  #  / # # /#   #",
+    "Y": "#   #/ # # /  #  /  #  /  #  ", "Z": "#####/   # /  #  / #   /#####",
+    "0": " ### /#  ##/# # #/##  #/ ### ", "1": "  #  / ##  /  #  /  #  /#####",
+    "2": " ### /#   #/  ## / #   /#####", "3": "#### /    #/ ### /    #/#### ",
+    "4": "#   #/#   #/#####/    #/    #", "5": "#####/#    /#### /    #/#### ",
+    "6": " ####/#    /#### /#   #/ ### ", "7": "#####/   # /  #  / #   /#    ",
+    "8": " ### /#   #/ ### /#   #/ ### ", "9": " ### /#   #/ ####/    #/#### ",
+    " ": "     /     /     /     /     ", "-": "     /     /#####/     /     ",
+    ".": "     /     /     /     /  #  ", "!": "  #  /  #  /  #  /     /  #  ",
+    ":": "     /  #  /     /  #  /     ",
+}
+
+
+def banner(text: str) -> str:
+    """Render text as a 5-row ASCII banner using the built-in block font."""
+    rows = ["", "", "", "", ""]
+    for ch in text.upper():
+        glyph = _FONT.get(ch, _FONT[" "]).split("/")
+        for i in range(5):
+            rows[i] += glyph[i] + "  "
+    return "\n".join(r.rstrip() for r in rows)
 
 
 def render(data: dict, group: str, site: str, width: int,
@@ -338,6 +476,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="config file (.toml or .json) with field defaults")
     p.add_argument("-p", "--profile", metavar="PATH",
                    help="group profile (logo, roster, boards) merged under the config")
+    p.add_argument("-t", "--template", metavar="NAME",
+                   help="bundled style template (see --list-templates)")
+    p.add_argument("--list-templates", action="store_true",
+                   help="list bundled templates and exit")
+    p.add_argument("--mediainfo", metavar="PATH",
+                   help="mediainfo JSON dump (or media file) to auto-fill media fields")
     p.add_argument("-o", "--output", metavar="PATH",
                    help="write to PATH instead of stdout")
     p.add_argument("-g", "--group", help=f"release group (default {DEFAULT_GROUP})")
@@ -352,6 +496,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="art file to place above the box")
     p.add_argument("--logo-encoding", choices=["cp437", "utf8"],
                    help="encoding of the logo file (default cp437)")
+    p.add_argument("--banner", action=argparse.BooleanOptionalAction,
+                   default=None, help="generate an ASCII banner logo (defaults to the group)")
+    p.add_argument("--banner-text", help="text for the generated banner")
     p.add_argument("--encoding", choices=["utf8", "cp437"], default="utf8",
                    help="output encoding (default utf8; cp437 for true DOS nfos)")
     p.add_argument("--presents", action=argparse.BooleanOptionalAction,
@@ -368,15 +515,37 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _templates_dir() -> Path:
+    return SCRIPT_DIR / "templates"
+
+
+def _list_templates() -> list[str]:
+    d = _templates_dir()
+    return sorted(p.stem for p in d.glob("*.toml")) if d.is_dir() else []
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.list_templates:
+        names = _list_templates()
+        print("\n".join(names) if names else "nfogen: no templates bundled")
+        return 0
+
     release = load_config(args.config)
 
-    # a group profile supplies base values (logo, roster, style, footer, ...);
-    # the release config overrides it, and CLI flags override both.
+    # layered base: a style template underneath a group profile; the release
+    # config overrides both, and CLI flags override everything.
+    template = {}
+    if args.template:
+        tpath = _templates_dir() / f"{args.template}.toml"
+        if not tpath.exists():
+            sys.exit(f"nfogen: unknown template '{args.template}' "
+                     f"(have: {', '.join(_list_templates()) or 'none'})")
+        template = load_config(str(tpath))
     profile_path = args.profile or release.get("profile")
     profile = load_config(profile_path) if profile_path else {}
-    config = {**profile, **release}
+    config = {**template, **profile, **release}
 
     # merge: config defaults, then any CLI flag that was supplied
     data = {k: config[k] for k, *_ in FIELDS if k in config and config[k] != ""}
@@ -384,6 +553,13 @@ def main(argv: list[str] | None = None) -> int:
         val = getattr(args, key)
         if val is not None:
             data[key] = val
+
+    # mediainfo fills any media field not already set by config or flags
+    mediainfo_src = args.mediainfo or config.get("mediainfo")
+    if mediainfo_src:
+        for key, val in load_mediainfo(mediainfo_src).items():
+            data.setdefault(key, val)
+
     data.setdefault("date", date.today().isoformat())
 
     group = args.group or config.get("group") or DEFAULT_GROUP
@@ -405,6 +581,7 @@ def main(argv: list[str] | None = None) -> int:
     panel_titles = (config.get("panel_left") or PANEL_TITLES[0],
                     config.get("panel_right") or PANEL_TITLES[1])
 
+    # logo: an art file wins; otherwise an optional generated banner
     logo = None
     logo_path = args.logo or config.get("logo")
     if logo_path:
@@ -413,6 +590,8 @@ def main(argv: list[str] | None = None) -> int:
             logo = Path(logo_path).read_text(encoding=enc, errors="replace")
         except FileNotFoundError:
             sys.exit(f"nfogen: logo not found: {logo_path}")
+    elif resolve(args.banner, "banner", False):
+        logo = banner(args.banner_text or config.get("banner_text") or group)
 
     roster = {k: config[k] for k in
               ("news", "members", "couriers", "boards", "affiliates", "outposts")

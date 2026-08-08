@@ -1,0 +1,6 @@
+# Bare card: single-line box, simple rows, house width. Just the facts.
+style    = "single"
+layout   = "rows"
+width    = 64
+presents = false
+footer   = false

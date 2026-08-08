@@ -1,0 +1,32 @@
+# Tier 4 demo: the media fields (video/audio/resolution/size/runtime/format/
+# language) are auto-filled from a mediainfo dump, and the header logo is a
+# generated ASCII banner. Regenerate with:
+#   python3 nfogen.py -c examples/mediainfo-demo.toml -o examples/mediainfo-demo.nfo
+group    = "KRZ"
+site     = "krz.sh"
+style    = "double"
+layout   = "panel"
+presents = true
+footer   = true
+
+banner      = true
+banner_text = "KRZ"
+
+mediainfo = "examples/sample.mediainfo.json"
+
+title    = "The.Midnight.Cartographer.2026.1080p.BluRay.x264-KRZ"
+date     = "2026-08-08"
+type     = "MOVIE"
+source   = "BluRay (Retail)"
+cracker  = "n/a"
+supplier = "The Witch King"
+genre    = "Drama / Mystery"
+url      = "imdb.com/title/tt9999999"
+
+notes = """
+A quiet cartographer maps a city that rearranges itself
+after midnight. Media details below were read straight from
+the source with mediainfo -- nothing typed by hand.
+"""
+
+greets = ["the-scene", "our-suppliers", "you"]

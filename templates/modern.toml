@@ -1,0 +1,6 @@
+# Cleaner modern look: single-line box, two-column panel, no scene boilerplate.
+style    = "single"
+layout   = "panel"
+width    = 79
+presents = false
+footer   = false
