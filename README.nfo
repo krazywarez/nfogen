@@ -1,5 +1,5 @@
 ┌──────────────────────────────────────────────────────────────┐
-│                     N F O G E N   1 . 0                      │
+│                     N F O G E N   1 . 1                      │
 │                       [ KRZ ]   krz.sh                       │
 ├──────────────────────────────────────────────────────────────┤
 │   DATE   2026-08-08                                          │
@@ -16,8 +16,8 @@
 │   REQUIRES python3 (3.11+ for TOML, else JSON).              │
 │                                                              │
 │   USAGE                                                      │
-│   nfogen.py --title "nfogen 1.0" --type APP                  │
-│   nfogen.py -c nfogen.toml --title "nfogen 1.0"              │
+│   nfogen.py --title "nfogen 1.1" --type APP                  │
+│   nfogen.py -c nfogen.toml --title "nfogen 1.1"              │
 │   nfogen.py -i  prompts for every field.                     │
 │   nfogen.py alone prompts when no title given.               │
 │                                                              │

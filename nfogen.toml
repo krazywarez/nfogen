@@ -2,7 +2,7 @@ group = "KRZ"
 site  = "krz.sh"
 width = 64
 style = "single"
-title = "nfogen 1.0"
+title = "nfogen 1.1"
 type  = "APP"
 files = "nfogen.py"
 url   = "krz.sh"
@@ -15,8 +15,8 @@ from CLI flags, a config file, prompts, or a mix.
 REQUIRES python3 (3.11+ for TOML, else JSON).
 
 USAGE
-nfogen.py --title "nfogen 1.0" --type APP
-nfogen.py -c nfogen.toml --title "nfogen 1.0"
+nfogen.py --title "nfogen 1.1" --type APP
+nfogen.py -c nfogen.toml --title "nfogen 1.1"
 nfogen.py -i  prompts for every field.
 nfogen.py alone prompts when no title given.
 
