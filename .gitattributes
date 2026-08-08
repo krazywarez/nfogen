@@ -1,0 +1,2 @@
+# CP437-encoded nfos hold high bytes; keep git from normalizing them.
+*.cp437.nfo binary

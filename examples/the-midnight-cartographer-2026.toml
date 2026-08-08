@@ -1,5 +1,8 @@
-group = "KRZ"
-site  = "krz.sh"
+group    = "KRZ"
+site     = "krz.sh"
+style    = "double"
+presents = true
+footer   = true
 
 title      = "The.Midnight.Cartographer.2026.1080p.BluRay.x264-KRZ"
 date       = "2026-08-08"

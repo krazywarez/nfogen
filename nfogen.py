@@ -47,7 +47,24 @@ INFO_KEYS = [k for k, _, _, kind in FIELDS if kind == "line" and k != "title"]
 
 DEFAULT_SITE = "krz.sh"
 DEFAULT_GROUP = "KRZ"
-DEFAULT_WIDTH = 64
+DEFAULT_WIDTH = 79  # DOS 80-column standard, less one margin column
+DEFAULT_STYLE = "double"
+DEFAULT_FOOTER = (
+    "SUPPORT THE COMPANIES THAT PRODUCE QUALITY SOFTWARE\n"
+    "if you enjoyed this release, buy it!"
+)
+
+# Box-drawing character sets. "single"/"double" are CP437-encodable; "block"
+# is a solid fill frame. Keys: corners + horizontal/vertical + tee separators.
+STYLES = {
+    "single": dict(tl="┌", tr="┐", bl="└", br="┘",
+                   h="─", v="│", ls="├", rs="┤"),
+    "double": dict(tl="╔", tr="╗", bl="╚", br="╝",
+                   h="═", v="║", ls="╠", rs="╣"),
+    "block":  dict(tl="█", tr="█", bl="█", br="█",
+                   h="█", v="█", ls="█", rs="█"),
+}
+
 CONFIG_CANDIDATES = [
     Path("nfogen.toml"),
     Path(".nfogen.toml"),
@@ -106,26 +123,31 @@ def _split_list(value) -> list[str]:
     return [p for p in str(value).replace(",", " ").split() if p]
 
 
-def render(data: dict, group: str, site: str, width: int) -> str:
+def render(data: dict, group: str, site: str, width: int,
+           style: str = DEFAULT_STYLE, presents: bool = False,
+           footer: str | None = None) -> str:
     inner = width - 4  # borders + one space of padding on each side
-    top = "┌" + "─" * (width - 2) + "┐"
-    sep = "├" + "─" * (width - 2) + "┤"
-    bot = "└" + "─" * (width - 2) + "┘"
+    s = STYLES[style]
+    top = s["tl"] + s["h"] * (width - 2) + s["tr"]
+    sep = s["ls"] + s["h"] * (width - 2) + s["rs"]
+    bot = s["bl"] + s["h"] * (width - 2) + s["br"]
 
     def line(content: str = "") -> str:
-        return "│ " + content.ljust(inner) + " │"
+        return f"{s['v']} " + content.ljust(inner) + f" {s['v']}"
 
     def center(content: str) -> str:
-        return "│ " + content.center(inner) + " │"
+        return f"{s['v']} " + content.center(inner) + f" {s['v']}"
 
     out: list[str] = [top]
 
-    # header: spaced title, then group tag + site
+    # header: spaced title, then group tag + site, optional presents banner
     title = str(data.get("title") or "UNTITLED").upper()
     spaced = " ".join(title)
     heading = spaced if len(spaced) <= inner else title
     out.append(center(_clip(heading, inner)))
     out.append(center(_clip(f"[ {group} ]   {site}", inner)))
+    if presents:
+        out.append(center(_clip(f"-={{ {group.upper()} proudly presents }}=-", inner)))
 
     # info rows
     rows = [(label, str(data[key]))
@@ -160,12 +182,21 @@ def render(data: dict, group: str, site: str, width: int) -> str:
         for wrapped in textwrap.wrap("   ".join(greets), inner - 4):
             out.append(line("  " + wrapped))
 
+    # footer disclaimer, centered
+    if footer:
+        out.append(sep)
+        out.append(line())
+        for para in footer.splitlines():
+            for wrapped in (textwrap.wrap(para, inner - 4) or [""]):
+                out.append(center(wrapped))
+        out.append(line())
+
     out.append(bot)
     return "\n".join(out) + "\n"
 
 
 def _clip(text: str, width: int) -> str:
-    return text if len(text) <= width else text[: width - 1] + "…"
+    return text if len(text) <= width else text[: width - 2] + ".."
 
 
 # --- cli ---------------------------------------------------------------------
@@ -182,6 +213,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-s", "--site", help=f"site tag (default {DEFAULT_SITE})")
     p.add_argument("-w", "--width", type=int,
                    help=f"box width in chars (default {DEFAULT_WIDTH})")
+    p.add_argument("--style", choices=sorted(STYLES),
+                   help=f"box-drawing style (default {DEFAULT_STYLE})")
+    p.add_argument("--encoding", choices=["utf8", "cp437"], default="utf8",
+                   help="output encoding (default utf8; cp437 for true DOS nfos)")
+    p.add_argument("--presents", action=argparse.BooleanOptionalAction,
+                   default=None, help="show the 'proudly presents' banner")
+    p.add_argument("--footer", action=argparse.BooleanOptionalAction,
+                   default=None, help="show the closing disclaimer block")
+    p.add_argument("--footer-text", help="custom disclaimer text")
     p.add_argument("-i", "--interactive", action="store_true",
                    help="prompt for every field")
     p.add_argument("--no-input", action="store_true",
@@ -206,6 +246,17 @@ def main(argv: list[str] | None = None) -> int:
     group = args.group or config.get("group") or DEFAULT_GROUP
     site = args.site or config.get("site") or DEFAULT_SITE
     width = args.width or config.get("width") or DEFAULT_WIDTH
+    style = args.style or config.get("style") or DEFAULT_STYLE
+
+    def resolve(flag, key, default):
+        if flag is not None:
+            return flag
+        return config.get(key, default)
+
+    presents = resolve(args.presents, "presents", False)
+    show_footer = resolve(args.footer, "footer", False)
+    footer_text = args.footer_text or config.get("footer_text") or DEFAULT_FOOTER
+    footer = footer_text if show_footer else None
 
     interactive = sys.stdin.isatty() and not args.no_input
     if args.interactive:
@@ -216,8 +267,16 @@ def main(argv: list[str] | None = None) -> int:
     if not data.get("title"):
         sys.exit("nfogen: a title is required (use --title, a config, or -i)")
 
-    text = render(data, group=group, site=site, width=width)
-    if args.output:
+    text = render(data, group=group, site=site, width=width, style=style,
+                  presents=presents, footer=footer)
+
+    if args.encoding == "cp437":
+        raw = text.encode("cp437", errors="replace")
+        if args.output:
+            Path(args.output).write_bytes(raw)
+        else:
+            sys.stdout.buffer.write(raw)
+    elif args.output:
         Path(args.output).write_text(text, encoding="utf-8")
     else:
         sys.stdout.write(text)
