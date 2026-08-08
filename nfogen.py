@@ -140,10 +140,18 @@ def _split_list(value) -> list[str]:
     return [p for p in str(value).replace(",", " ").split() if p]
 
 
+def _col_widths(available: int, fracs: list[float]) -> list[int]:
+    """Split `available` chars into columns by fraction; last column absorbs
+    the remainder so the widths always sum exactly."""
+    widths = [max(4, int(available * f)) for f in fracs[:-1]]
+    widths.append(available - sum(widths))
+    return widths
+
+
 def render(data: dict, group: str, site: str, width: int,
            style: str = DEFAULT_STYLE, presents: bool = False,
            footer: str | None = None, layout: str = DEFAULT_LAYOUT,
-           logo: str | None = None,
+           logo: str | None = None, roster: dict | None = None,
            panel_titles: tuple[str, str] = PANEL_TITLES) -> str:
     s = STYLES[style]
     h, v = s["h"], s["v"]
@@ -243,6 +251,66 @@ def render(data: dict, group: str, site: str, width: int,
         for wrapped in textwrap.wrap("   ".join(greets), inner - 4):
             out.append(line("  " + wrapped))
 
+    # group roster sections (from a profile): news, members, couriers,
+    # boards/affiliates tables, outposts
+    r = roster or {}
+
+    def section(header: str) -> None:
+        out.append(sep_before())
+        out.append(line(f"  {header}"))
+        out.append(line())
+
+    def names_block(names: list[str]) -> None:
+        for wrapped in textwrap.wrap("   ".join(names), inner - 4):
+            out.append(center(wrapped))
+        out.append(line())
+
+    def table(header: str, entries: list) -> None:
+        section(header)
+        if entries and isinstance(entries[0], dict):
+            ws = _col_widths(inner - 2, [0.34, 0.24, 0.22, 0.20])
+            keys = ["name", "role", "sysop", "phone"]
+
+            def row(vals: list[str]) -> str:
+                cells = "".join(_clip(str(x), w - 1).ljust(w)
+                                for x, w in zip(vals, ws))
+                return line("  " + cells)
+
+            out.append(row(["BOARD", "ROLE", "SYSOP", "CONTACT"]))
+            for e in entries:
+                out.append(row([e.get(k, "") for k in keys]))
+        else:
+            names_block(_split_list(entries))
+
+    news = str(r.get("news") or "").strip()
+    if news:
+        section("GROUP NEWS")
+        for para in news.splitlines():
+            for wrapped in (textwrap.wrap(para, inner - 4) or [""]):
+                out.append(line("  " + wrapped))
+
+    members = _split_list(r.get("members") or [])
+    if members:
+        section("MEMBERS")
+        names_block(members)
+
+    couriers = r.get("couriers") or {}
+    if couriers:
+        section("COURIERS")
+        for tier, who in couriers.items():
+            out.append(center(f"- {tier} -"))
+            names_block(_split_list(who))
+
+    if r.get("boards"):
+        table("BOARDS", r["boards"])
+    if r.get("affiliates"):
+        table("AFFILIATES", r["affiliates"])
+
+    outposts = _split_list(r.get("outposts") or [])
+    if outposts:
+        section("OUTPOSTS")
+        names_block(outposts)
+
     # footer disclaimer, centered
     if footer:
         out.append(sep_before())
@@ -268,6 +336,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("-c", "--config", metavar="PATH",
                    help="config file (.toml or .json) with field defaults")
+    p.add_argument("-p", "--profile", metavar="PATH",
+                   help="group profile (logo, roster, boards) merged under the config")
     p.add_argument("-o", "--output", metavar="PATH",
                    help="write to PATH instead of stdout")
     p.add_argument("-g", "--group", help=f"release group (default {DEFAULT_GROUP})")
@@ -300,7 +370,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    config = load_config(args.config)
+    release = load_config(args.config)
+
+    # a group profile supplies base values (logo, roster, style, footer, ...);
+    # the release config overrides it, and CLI flags override both.
+    profile_path = args.profile or release.get("profile")
+    profile = load_config(profile_path) if profile_path else {}
+    config = {**profile, **release}
 
     # merge: config defaults, then any CLI flag that was supplied
     data = {k: config[k] for k, *_ in FIELDS if k in config and config[k] != ""}
@@ -338,6 +414,10 @@ def main(argv: list[str] | None = None) -> int:
         except FileNotFoundError:
             sys.exit(f"nfogen: logo not found: {logo_path}")
 
+    roster = {k: config[k] for k in
+              ("news", "members", "couriers", "boards", "affiliates", "outposts")
+              if config.get(k)}
+
     interactive = sys.stdin.isatty() and not args.no_input
     if args.interactive:
         prompt_missing(data, force_all=True)
@@ -349,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
 
     text = render(data, group=group, site=site, width=width, style=style,
                   presents=presents, footer=footer, layout=layout,
-                  logo=logo, panel_titles=panel_titles)
+                  logo=logo, roster=roster, panel_titles=panel_titles)
 
     if args.encoding == "cp437":
         raw = text.encode("cp437", errors="replace")

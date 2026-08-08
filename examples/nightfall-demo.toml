@@ -1,0 +1,31 @@
+# A release config. It names a group profile for all the shared boilerplate
+# and only sets the fields that change from one release to the next.
+profile = "examples/krz.profile.toml"
+
+title      = "Nightfall.Protocol.v1.4-KRZ"
+date       = "2026-08-08"
+
+cracker    = "Lime"
+supplier   = "The Witch King"
+packager   = "Renegade Chemist"
+protection = "SafeDisc + Serial"
+install    = "unzip, run SETUP, apply keygen"
+rating     = "9/10"
+
+type       = "GAME"
+publisher  = "Nocturne Interactive"
+format     = "ISO + patch"
+disks      = "3 x CD"
+size       = "1.87 GB"
+files      = "96 x 20 MB"
+url        = "krz.sh/nightfall"
+
+notes = """
+A stealth-action thriller set in a city that never sleeps.
+Cracked clean -- no disc check, no online activation.
+
+Mount or burn the ISO, install, then run the KRZ patch over
+the game directory. Serial is in the keygen. Tested working.
+"""
+
+greets = ["razor-blade", "jack", "the-couriers", "everyone-in-the-scene"]

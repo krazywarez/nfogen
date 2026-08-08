@@ -1,0 +1,82 @@
+# A group profile: the reusable KRZ boilerplate. Point any release config at
+# it with `profile = "examples/krz.profile.toml"` (or nfogen -p PATH) and it
+# supplies the logo, roster, boards, footer and house style. The release
+# config only carries per-release fields (title, cracker, notes, ...).
+
+group    = "KRZ"
+site     = "krz.sh"
+style    = "double"
+layout   = "panel"
+presents = true
+footer   = true
+logo     = "examples/krz-logo.asc"
+logo_encoding = "utf8"
+
+footer_text = """
+SUPPORT THE COMPANIES THAT PRODUCE QUALITY SOFTWARE
+if you enjoyed this release, buy it!
+KRZ does not accept cash or hardware of any kind.
+"""
+
+news = """
+Welcome Celestial Wizard back to the group!
+We are in need of couriers for the release rush -- especially
+those available in the daytime. Contact a senior member.
+"""
+
+members = [
+  "Avalon", "Black Spyrit", "Butcher", "The Chairman", "Darwin",
+  "Doctor No", "Eldar", "Grimstalk", "Hologram", "Intrepid", "Jack",
+  "Knightmare", "Marko Ramius", "ONYX", "Razor Blade", "Red Baron",
+  "Savage Steel", "StingRay", "The Unknown", "The Witch King",
+]
+
+[couriers]
+Director = ["The Unforgiven"]
+Senior   = ["Ur Lord", "Lord Tiamat", "Wind Walker", "Bubba"]
+Elite    = ["Shadow Phantom", "Baddog", "Load Master", "Joebee", "Azmodeus"]
+Trial    = ["Dead Pool", "Beach Bum", "Black Mage", "Ben Jammin"]
+
+[[boards]]
+name  = "Suburbia"
+role  = "World HQ"
+sysop = "The Chairman"
+phone = "ITS/PRIVATE"
+
+[[boards]]
+name  = "TerrorDome"
+role  = "Canadian HQ"
+sysop = "StingRay"
+phone = "ITS/PRIVATE"
+
+[[boards]]
+name  = "Kindergarden"
+role  = "European HQ"
+sysop = "Doctor No"
+phone = "+47-7-525156"
+
+[[boards]]
+name  = "Apocalypse"
+role  = "Courier HQ"
+sysop = "P.O.W."
+phone = "ITS/PRIVATE"
+
+[[affiliates]]
+name  = "Reign In Blood"
+role  = "Affiliate"
+sysop = "Uriel"
+phone = "718/698-1969"
+
+[[affiliates]]
+name  = "So-Krate's"
+role  = "Affiliate"
+sysop = "Philosopher"
+phone = "310/578-7226"
+
+[[affiliates]]
+name  = "The Space Zone"
+role  = "Affiliate"
+sysop = "Death Ray"
+phone = "301/416-0118"
+
+outposts = ["Infinite Darkness", "The Atomic Cafe", "Sanctuary"]
