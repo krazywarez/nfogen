@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 import textwrap
@@ -77,12 +76,12 @@ PANEL_TITLES = ("Release Information", "Game Information")
 # jt/jm/jb are the down-tee, cross, and up-tee used where the panel's
 # vertical column divider meets a horizontal rule.
 STYLES = {
-    "single": dict(tl="┌", tr="┐", bl="└", br="┘", h="─", v="│",
-                   ls="├", rs="┤", jt="┬", jm="┼", jb="┴"),
-    "double": dict(tl="╔", tr="╗", bl="╚", br="╝", h="═", v="║",
-                   ls="╠", rs="╣", jt="╦", jm="╬", jb="╩"),
-    "block":  dict(tl="█", tr="█", bl="█", br="█", h="█", v="█",
-                   ls="█", rs="█", jt="█", jm="█", jb="█"),
+    "single": {"tl": "┌", "tr": "┐", "bl": "└", "br": "┘", "h": "─", "v": "│",
+               "ls": "├", "rs": "┤", "jt": "┬", "jm": "┼", "jb": "┴"},
+    "double": {"tl": "╔", "tr": "╗", "bl": "╚", "br": "╝", "h": "═", "v": "║",
+               "ls": "╠", "rs": "╣", "jt": "╦", "jm": "╬", "jb": "╩"},
+    "block":  {"tl": "█", "tr": "█", "bl": "█", "br": "█", "h": "█", "v": "█",
+               "ls": "█", "rs": "█", "jt": "█", "jm": "█", "jb": "█"},
 }
 
 CONFIG_CANDIDATES = [
@@ -97,7 +96,7 @@ def load_config(explicit: str | None) -> dict:
     """Load defaults from a TOML or JSON file. Returns {} if none found."""
     path = None
     if explicit:
-        path = Path(explicit)
+        path = Path(explicit)  # NOSONAR local CLI: the user's own path, no trust boundary
         if not path.exists():
             sys.exit(f"nfogen: config not found: {explicit}")
     else:
@@ -105,7 +104,7 @@ def load_config(explicit: str | None) -> dict:
     if path is None:
         return {}
 
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8")  # NOSONAR local CLI: the user's own path
     if path.suffix == ".json":
         return json.loads(text)
     try:
@@ -116,15 +115,18 @@ def load_config(explicit: str | None) -> dict:
 
 
 # --- mediainfo import --------------------------------------------------------
+_MI_TYPE = "@type"  # mediainfo track-type key
+
+
 def load_mediainfo(path: str) -> dict:
     """Read a `mediainfo --Output=JSON` dump (or run mediainfo on a media file)
     and return values for the video/audio/resolution/size/runtime/format keys."""
-    p = Path(path)
+    p = Path(path)  # NOSONAR local CLI: the user's own path, no trust boundary
     if p.suffix.lower() == ".json":
-        raw = p.read_text(encoding="utf-8")
+        raw = p.read_text(encoding="utf-8")  # NOSONAR local CLI: the user's own path
     else:
         try:
-            proc = subprocess.run(["mediainfo", "--Output=JSON", str(p)],
+            proc = subprocess.run(["mediainfo", "--Output=JSON", str(p)],  # NOSONAR local CLI: the user's own file
                                   capture_output=True, text=True, check=True)
         except FileNotFoundError:
             sys.exit("nfogen: mediainfo not installed; pass a JSON dump to --mediainfo")
@@ -165,49 +167,70 @@ def _mi_duration(s) -> str:
     return f"{h}h {m:02d}m" if h else f"{m}m {sec % 60:02d}s"
 
 
-def _extract_media(doc: dict) -> dict:
-    tracks = (doc.get("media") or {}).get("track") or []
-    g = next((t for t in tracks if t.get("@type") == "General"), {})
-    v = next((t for t in tracks if t.get("@type") == "Video"), {})
-    auds = [t for t in tracks if t.get("@type") == "Audio"]
-    txts = [t for t in tracks if t.get("@type") == "Text"]
-    a = auds[0] if auds else {}
-    channels = {"1": "1.0", "2": "2.0", "6": "5.1", "8": "7.1"}
-    out: dict = {}
+def _mi_tracks(tracks: list, kind: str) -> list:
+    return [t for t in tracks if t.get(_MI_TYPE) == kind]
 
+
+def _mi_general(g: dict) -> dict:
+    out = {}
     if g.get("Format"):
         out["format"] = g["Format"]
     if g.get("FileSize"):
         out["size"] = _mi_size(g["FileSize"])
-    if g.get("Duration") or v.get("Duration"):
-        out["runtime"] = _mi_duration(g.get("Duration") or v.get("Duration"))
+    return out
 
-    if v:
-        parts = [v.get("Encoded_Library_Name") or v.get("Format")]
-        if v.get("BitRate"):
-            parts.append(f"{int(float(v['BitRate'])) // 1000} kbps")
-        if v.get("FrameRate"):
-            parts.append(f"{float(v['FrameRate']):g} fps")
-        out["video"] = ", ".join(p for p in parts if p)
-        if v.get("Width") and v.get("Height"):
-            out["resolution"] = f"{_mi_int(v['Width'])}x{_mi_int(v['Height'])}"
 
-    if a:
-        parts = [a.get("Format")]
-        if a.get("Channels"):
-            parts.append(channels.get(str(a["Channels"]), f"{a['Channels']}ch"))
-        if a.get("BitRate"):
-            parts.append(f"{int(float(a['BitRate'])) // 1000} kbps")
-        audio = ", ".join(p for p in parts if p)
-        if a.get("Language"):
-            audio = f"{audio} ({a['Language']})" if audio else a["Language"]
-        out["audio"] = audio
+def _mi_video(v: dict) -> dict:
+    if not v:
+        return {}
+    parts = [v.get("Encoded_Library_Name") or v.get("Format")]
+    if v.get("BitRate"):
+        parts.append(f"{int(float(v['BitRate'])) // 1000} kbps")
+    if v.get("FrameRate"):
+        parts.append(f"{float(v['FrameRate']):g} fps")
+    out = {"video": ", ".join(p for p in parts if p)}
+    if v.get("Width") and v.get("Height"):
+        out["resolution"] = f"{_mi_int(v['Width'])}x{_mi_int(v['Height'])}"
+    return out
 
+
+def _mi_audio(a: dict) -> dict:
+    if not a:
+        return {}
+    channels = {"1": "1.0", "2": "2.0", "6": "5.1", "8": "7.1"}
+    parts = [a.get("Format")]
+    if a.get("Channels"):
+        parts.append(channels.get(str(a["Channels"]), f"{a['Channels']}ch"))
+    if a.get("BitRate"):
+        parts.append(f"{int(float(a['BitRate'])) // 1000} kbps")
+    audio = ", ".join(p for p in parts if p)
+    if a.get("Language"):
+        audio = f"{audio} ({a['Language']})" if audio else a["Language"]
+    return {"audio": audio}
+
+
+def _mi_language(a: dict, txts: list) -> str:
     subs = list(dict.fromkeys(t.get("Language") for t in txts if t.get("Language")))
     lang = a.get("Language") or ""
     if subs:
-        out["language"] = (f"{lang} (subs: {', '.join(subs)})").strip()
-    elif lang:
+        return f"{lang} (subs: {', '.join(subs)})".strip()
+    return lang
+
+
+def _extract_media(doc: dict) -> dict:
+    tracks = (doc.get("media") or {}).get("track") or []
+    g = next(iter(_mi_tracks(tracks, "General")), {})
+    v = next(iter(_mi_tracks(tracks, "Video")), {})
+    auds = _mi_tracks(tracks, "Audio")
+    txts = _mi_tracks(tracks, "Text")
+    a = auds[0] if auds else {}
+
+    out = {**_mi_general(g), **_mi_video(v), **_mi_audio(a)}
+    dur = g.get("Duration") or v.get("Duration")
+    if dur:
+        out["runtime"] = _mi_duration(dur)
+    lang = _mi_language(a, txts)
+    if lang:
         out["language"] = lang
 
     return {k: val for k, val in out.items() if val}
@@ -286,180 +309,219 @@ def banner(text: str) -> str:
     return "\n".join(r.rstrip() for r in rows)
 
 
+class _Canvas:
+    """Accumulates boxed lines and holds the geometry for a width and style."""
+
+    def __init__(self, width: int, style: str):
+        self.s = STYLES[style]
+        self.width = width
+        self.inner = width - 4        # single-column content width
+        self.cl = (width - 7) // 2    # left panel content width
+        self.cr = (width - 7) - self.cl
+        self.rfill = width - self.cl - 5
+        self.out: list[str] = []
+        self.prev_panel = False
+
+    def add(self, text: str = "") -> None:
+        self.out.append(text)
+
+    def hrule(self, left: str, right: str, joint: str | None = None) -> str:
+        h = self.s["h"]
+        if joint is None:
+            return left + h * (self.width - 2) + right
+        return left + h * (self.cl + 2) + joint + h * self.rfill + right
+
+    def line(self, content: str = "") -> str:
+        v = self.s["v"]
+        return f"{v} " + content.ljust(self.inner) + f" {v}"
+
+    def center(self, content: str) -> str:
+        v = self.s["v"]
+        return f"{v} " + content.center(self.inner) + f" {v}"
+
+    def prow(self, left: str, right: str, centered: bool = False) -> str:
+        v = self.s["v"]
+        fn = str.center if centered else str.ljust
+        return (f"{v} " + fn(_clip(left, self.cl), self.cl)
+                + f" {v} " + fn(_clip(right, self.cr), self.cr) + f" {v}")
+
+    def sep_before(self) -> str:
+        joint = self.s["jb"] if self.prev_panel else None
+        self.prev_panel = False
+        return self.hrule(self.s["ls"], self.s["rs"], joint)
+
+    def section(self, header: str) -> None:
+        self.add(self.sep_before())
+        self.add(self.line(f"  {header}"))
+        self.add(self.line())
+
+    def names_block(self, names: list[str]) -> None:
+        for wrapped in textwrap.wrap("   ".join(names), self.inner - 4):
+            self.add(self.center(wrapped))
+        self.add(self.line())
+
+    def wrapped_body(self, text: str) -> None:
+        for para in text.splitlines() or [""]:
+            for chunk in (textwrap.wrap(para, self.inner - 4) or [""]):
+                self.add(self.line("  " + chunk))
+
+
+def _render_logo(cvs: _Canvas, logo: str | None) -> None:
+    if not logo:
+        return
+    art = logo.rstrip("\n").split("\n")
+    pad = max((cvs.width - max((len(a) for a in art), default=0)) // 2, 0)
+    cvs.out.extend((" " * pad + a).rstrip() for a in art)
+    cvs.add("")
+
+
+def _render_header(cvs: _Canvas, data: dict, group: str, site: str,
+                   presents: bool) -> None:
+    title = str(data.get("title") or "UNTITLED").upper()
+    spaced = " ".join(title)
+    heading = spaced if len(spaced) <= cvs.inner else title
+    cvs.add(cvs.center(_clip(heading, cvs.inner)))
+    cvs.add(cvs.center(_clip(f"[ {group} ]   {site}", cvs.inner)))
+    if presents:
+        cvs.add(cvs.center(
+            _clip(f"-={{ {group.upper()} proudly presents }}=-", cvs.inner)))
+
+
+def _line_fields(data: dict) -> list:
+    return [(k, lbl, col) for k, lbl, _, kind, col in FIELDS
+            if kind == "line" and k != "title" and data.get(k)]
+
+
+def _render_panel(cvs: _Canvas, data: dict, fields: list,
+                  panel_titles: tuple[str, str]) -> None:
+    s = cvs.s
+    left = [(lbl, str(data[k])) for k, lbl, col in fields if col == "L"]
+    right = [(lbl, str(data[k])) for k, lbl, col in fields if col == "R"]
+    lw_l = max((len(lbl) for lbl, _ in left), default=0)
+    lw_r = max((len(lbl) for lbl, _ in right), default=0)
+
+    def cell(pair, lw):
+        return f" {pair[0]:<{lw}} : {pair[1]}" if pair else ""
+
+    cvs.add(cvs.hrule(s["ls"], s["rs"], s["jt"]))
+    cvs.add(cvs.prow(panel_titles[0], panel_titles[1], centered=True))
+    cvs.add(cvs.hrule(s["ls"], s["rs"], s["jm"]))
+    for lp, rp in zip_longest(left, right):
+        cvs.add(cvs.prow(cell(lp, lw_l), cell(rp, lw_r)))
+    cvs.prev_panel = True
+
+
+def _render_rows(cvs: _Canvas, data: dict, fields: list) -> None:
+    cvs.add(cvs.hrule(cvs.s["ls"], cvs.s["rs"]))
+    lw = max(len(lbl) for _, lbl, _ in fields)
+    avail = cvs.inner - (2 + lw + 2)
+    for k, lbl, _ in fields:
+        wrapped = textwrap.wrap(str(data[k]), avail) or [""]
+        cvs.add(cvs.line(f"  {lbl:<{lw}}  {wrapped[0]}"))
+        for cont in wrapped[1:]:
+            cvs.add(cvs.line(" " * (2 + lw + 2) + cont))
+
+
+def _render_info(cvs: _Canvas, data: dict, layout: str,
+                 panel_titles: tuple[str, str]) -> None:
+    fields = _line_fields(data)
+    if not fields:
+        return
+    if layout == "panel":
+        _render_panel(cvs, data, fields, panel_titles)
+    else:
+        _render_rows(cvs, data, fields)
+
+
+def _render_notes(cvs: _Canvas, data: dict) -> None:
+    notes = str(data.get("notes") or "").strip()
+    if not notes:
+        return
+    cvs.section("NOTES")
+    cvs.wrapped_body(notes)
+
+
+def _render_greets(cvs: _Canvas, data: dict) -> None:
+    greets = _split_list(data.get("greets") or [])
+    if not greets:
+        return
+    cvs.section("GREETS")
+    for wrapped in textwrap.wrap("   ".join(greets), cvs.inner - 4):
+        cvs.add(cvs.line("  " + wrapped))
+
+
+def _render_table(cvs: _Canvas, header: str, entries: list) -> None:
+    cvs.section(header)
+    if entries and isinstance(entries[0], dict):
+        ws = _col_widths(cvs.inner - 2, [0.34, 0.24, 0.22, 0.20])
+        keys = ["name", "role", "sysop", "phone"]
+
+        def row(vals):
+            cells = "".join(_clip(str(x), w - 1).ljust(w)
+                            for x, w in zip(vals, ws))
+            return cvs.line("  " + cells)
+
+        cvs.add(row(["BOARD", "ROLE", "SYSOP", "CONTACT"]))
+        for e in entries:
+            cvs.add(row([e.get(k, "") for k in keys]))
+    else:
+        cvs.names_block(_split_list(entries))
+
+
+def _render_roster(cvs: _Canvas, roster: dict | None) -> None:
+    r = roster or {}
+    news = str(r.get("news") or "").strip()
+    if news:
+        cvs.section("GROUP NEWS")
+        cvs.wrapped_body(news)
+    members = _split_list(r.get("members") or [])
+    if members:
+        cvs.section("MEMBERS")
+        cvs.names_block(members)
+    couriers = r.get("couriers") or {}
+    if couriers:
+        cvs.section("COURIERS")
+        for tier, who in couriers.items():
+            cvs.add(cvs.center(f"- {tier} -"))
+            cvs.names_block(_split_list(who))
+    if r.get("boards"):
+        _render_table(cvs, "BOARDS", r["boards"])
+    if r.get("affiliates"):
+        _render_table(cvs, "AFFILIATES", r["affiliates"])
+    outposts = _split_list(r.get("outposts") or [])
+    if outposts:
+        cvs.section("OUTPOSTS")
+        cvs.names_block(outposts)
+
+
+def _render_footer(cvs: _Canvas, footer: str | None) -> None:
+    if not footer:
+        return
+    cvs.add(cvs.sep_before())
+    cvs.add(cvs.line())
+    for para in footer.splitlines():
+        for wrapped in (textwrap.wrap(para, cvs.inner - 4) or [""]):
+            cvs.add(cvs.center(wrapped))
+    cvs.add(cvs.line())
+
+
 def render(data: dict, group: str, site: str, width: int,
            style: str = DEFAULT_STYLE, presents: bool = False,
            footer: str | None = None, layout: str = DEFAULT_LAYOUT,
            logo: str | None = None, roster: dict | None = None,
            panel_titles: tuple[str, str] = PANEL_TITLES) -> str:
-    s = STYLES[style]
-    h, v = s["h"], s["v"]
-    inner = width - 4          # single-column content width (1 space padding)
-    cl = (width - 7) // 2      # left panel content width
-    cr = (width - 7) - cl      # right panel content width
-    rfill = width - cl - 5     # h-run right of the divider in a rule
-
-    def hrule(left: str, right: str, joint: str | None = None) -> str:
-        if joint is None:
-            return left + h * (width - 2) + right
-        return left + h * (cl + 2) + joint + h * rfill + right
-
-    def line(content: str = "") -> str:
-        return f"{v} " + content.ljust(inner) + f" {v}"
-
-    def center(content: str) -> str:
-        return f"{v} " + content.center(inner) + f" {v}"
-
-    def prow(left: str, right: str, centered: bool = False) -> str:
-        fn = str.center if centered else str.ljust
-        return (f"{v} " + fn(_clip(left, cl), cl)
-                + f" {v} " + fn(_clip(right, cr), cr) + f" {v}")
-
-    out: list[str] = []
-
-    # logo art above the box, block-centered to the full width
-    if logo:
-        art = logo.rstrip("\n").split("\n")
-        pad = max((width - max((len(a) for a in art), default=0)) // 2, 0)
-        out.extend((" " * pad + a).rstrip() for a in art)
-        out.append("")
-
-    out.append(hrule(s["tl"], s["tr"]))
-
-    # header: spaced title, then group tag + site, optional presents banner
-    title = str(data.get("title") or "UNTITLED").upper()
-    spaced = " ".join(title)
-    heading = spaced if len(spaced) <= inner else title
-    out.append(center(_clip(heading, inner)))
-    out.append(center(_clip(f"[ {group} ]   {site}", inner)))
-    if presents:
-        out.append(center(_clip(f"-={{ {group.upper()} proudly presents }}=-", inner)))
-
-    line_fields = [(k, lbl, col) for k, lbl, _, kind, col in FIELDS
-                   if kind == "line" and k != "title" and data.get(k)]
-    prev_panel = False
-
-    def sep_before() -> str:
-        nonlocal prev_panel
-        joint = s["jb"] if prev_panel else None
-        prev_panel = False
-        return hrule(s["ls"], s["rs"], joint)
-
-    # info: two-column panel or single-column rows
-    if layout == "panel" and line_fields:
-        left = [(lbl, str(data[k])) for k, lbl, col in line_fields if col == "L"]
-        right = [(lbl, str(data[k])) for k, lbl, col in line_fields if col == "R"]
-        lw_l = max((len(lbl) for lbl, _ in left), default=0)
-        lw_r = max((len(lbl) for lbl, _ in right), default=0)
-
-        def cell(pair, lw):
-            return f" {pair[0]:<{lw}} : {pair[1]}" if pair else ""
-
-        out.append(hrule(s["ls"], s["rs"], s["jt"]))
-        out.append(prow(panel_titles[0], panel_titles[1], centered=True))
-        out.append(hrule(s["ls"], s["rs"], s["jm"]))
-        for lp, rp in zip_longest(left, right):
-            out.append(prow(cell(lp, lw_l), cell(rp, lw_r)))
-        prev_panel = True
-    elif line_fields:
-        out.append(hrule(s["ls"], s["rs"]))
-        lw = max(len(lbl) for _, lbl, _ in line_fields)
-        avail = inner - (2 + lw + 2)
-        for k, lbl, _ in line_fields:
-            wrapped = textwrap.wrap(str(data[k]), avail) or [""]
-            out.append(line(f"  {lbl:<{lw}}  {wrapped[0]}"))
-            for cont in wrapped[1:]:
-                out.append(line(" " * (2 + lw + 2) + cont))
-
-    # notes block
-    notes = str(data.get("notes") or "").strip()
-    if notes:
-        out.append(sep_before())
-        out.append(line("  NOTES"))
-        out.append(line())
-        for para in notes.splitlines() or [""]:
-            for wrapped in (textwrap.wrap(para, inner - 4) or [""]):
-                out.append(line("  " + wrapped))
-
-    # greets block
-    greets = _split_list(data.get("greets") or [])
-    if greets:
-        out.append(sep_before())
-        out.append(line("  GREETS"))
-        out.append(line())
-        for wrapped in textwrap.wrap("   ".join(greets), inner - 4):
-            out.append(line("  " + wrapped))
-
-    # group roster sections (from a profile): news, members, couriers,
-    # boards/affiliates tables, outposts
-    r = roster or {}
-
-    def section(header: str) -> None:
-        out.append(sep_before())
-        out.append(line(f"  {header}"))
-        out.append(line())
-
-    def names_block(names: list[str]) -> None:
-        for wrapped in textwrap.wrap("   ".join(names), inner - 4):
-            out.append(center(wrapped))
-        out.append(line())
-
-    def table(header: str, entries: list) -> None:
-        section(header)
-        if entries and isinstance(entries[0], dict):
-            ws = _col_widths(inner - 2, [0.34, 0.24, 0.22, 0.20])
-            keys = ["name", "role", "sysop", "phone"]
-
-            def row(vals: list[str]) -> str:
-                cells = "".join(_clip(str(x), w - 1).ljust(w)
-                                for x, w in zip(vals, ws))
-                return line("  " + cells)
-
-            out.append(row(["BOARD", "ROLE", "SYSOP", "CONTACT"]))
-            for e in entries:
-                out.append(row([e.get(k, "") for k in keys]))
-        else:
-            names_block(_split_list(entries))
-
-    news = str(r.get("news") or "").strip()
-    if news:
-        section("GROUP NEWS")
-        for para in news.splitlines():
-            for wrapped in (textwrap.wrap(para, inner - 4) or [""]):
-                out.append(line("  " + wrapped))
-
-    members = _split_list(r.get("members") or [])
-    if members:
-        section("MEMBERS")
-        names_block(members)
-
-    couriers = r.get("couriers") or {}
-    if couriers:
-        section("COURIERS")
-        for tier, who in couriers.items():
-            out.append(center(f"- {tier} -"))
-            names_block(_split_list(who))
-
-    if r.get("boards"):
-        table("BOARDS", r["boards"])
-    if r.get("affiliates"):
-        table("AFFILIATES", r["affiliates"])
-
-    outposts = _split_list(r.get("outposts") or [])
-    if outposts:
-        section("OUTPOSTS")
-        names_block(outposts)
-
-    # footer disclaimer, centered
-    if footer:
-        out.append(sep_before())
-        out.append(line())
-        for para in footer.splitlines():
-            for wrapped in (textwrap.wrap(para, inner - 4) or [""]):
-                out.append(center(wrapped))
-        out.append(line())
-
-    out.append(hrule(s["bl"], s["br"], s["jb"] if prev_panel else None))
-    return "\n".join(out) + "\n"
+    cvs = _Canvas(width, style)
+    _render_logo(cvs, logo)
+    cvs.add(cvs.hrule(cvs.s["tl"], cvs.s["tr"]))
+    _render_header(cvs, data, group, site, presents)
+    _render_info(cvs, data, layout, panel_titles)
+    _render_notes(cvs, data)
+    _render_greets(cvs, data)
+    _render_roster(cvs, roster)
+    _render_footer(cvs, footer)
+    cvs.add(cvs.hrule(cvs.s["bl"], cvs.s["br"],
+                      cvs.s["jb"] if cvs.prev_panel else None))
+    return "\n".join(cvs.out) + "\n"
 
 
 def _clip(text: str, width: int) -> str:
@@ -524,18 +586,13 @@ def _list_templates() -> list[str]:
     return sorted(p.stem for p in d.glob("*.toml")) if d.is_dir() else []
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+def _resolve(flag, config: dict, key: str, default):
+    return flag if flag is not None else config.get(key, default)
 
-    if args.list_templates:
-        names = _list_templates()
-        print("\n".join(names) if names else "nfogen: no templates bundled")
-        return 0
 
+def _layered_config(args) -> dict:
+    """Merge template < profile < release-config (CLI flags applied later)."""
     release = load_config(args.config)
-
-    # layered base: a style template underneath a group profile; the release
-    # config overrides both, and CLI flags override everything.
     template = {}
     if args.template:
         tpath = _templates_dir() / f"{args.template}.toml"
@@ -545,83 +602,96 @@ def main(argv: list[str] | None = None) -> int:
         template = load_config(str(tpath))
     profile_path = args.profile or release.get("profile")
     profile = load_config(profile_path) if profile_path else {}
-    config = {**template, **profile, **release}
+    return {**template, **profile, **release}
 
-    # merge: config defaults, then any CLI flag that was supplied
+
+def _collect_data(args, config: dict) -> dict:
     data = {k: config[k] for k, *_ in FIELDS if k in config and config[k] != ""}
     for key, *_ in FIELDS:
         val = getattr(args, key)
         if val is not None:
             data[key] = val
-
-    # mediainfo fills any media field not already set by config or flags
     mediainfo_src = args.mediainfo or config.get("mediainfo")
     if mediainfo_src:
         for key, val in load_mediainfo(mediainfo_src).items():
             data.setdefault(key, val)
-
     data.setdefault("date", date.today().isoformat())
+    return data
 
-    group = args.group or config.get("group") or DEFAULT_GROUP
-    site = args.site or config.get("site") or DEFAULT_SITE
-    width = args.width or config.get("width") or DEFAULT_WIDTH
-    style = args.style or config.get("style") or DEFAULT_STYLE
 
-    def resolve(flag, key, default):
-        if flag is not None:
-            return flag
-        return config.get(key, default)
-
-    presents = resolve(args.presents, "presents", False)
-    show_footer = resolve(args.footer, "footer", False)
-    footer_text = args.footer_text or config.get("footer_text") or DEFAULT_FOOTER
-    footer = footer_text if show_footer else None
-
-    layout = args.layout or config.get("layout") or DEFAULT_LAYOUT
-    panel_titles = (config.get("panel_left") or PANEL_TITLES[0],
-                    config.get("panel_right") or PANEL_TITLES[1])
-
-    # logo: an art file wins; otherwise an optional generated banner
-    logo = None
-    logo_path = args.logo or config.get("logo")
-    if logo_path:
-        enc = args.logo_encoding or config.get("logo_encoding") or "cp437"
-        try:
-            logo = Path(logo_path).read_text(encoding=enc, errors="replace")
-        except FileNotFoundError:
-            sys.exit(f"nfogen: logo not found: {logo_path}")
-    elif resolve(args.banner, "banner", False):
-        logo = banner(args.banner_text or config.get("banner_text") or group)
-
-    roster = {k: config[k] for k in
-              ("news", "members", "couriers", "boards", "affiliates", "outposts")
-              if config.get(k)}
-
+def _fill_interactive(args, data: dict) -> None:
     interactive = sys.stdin.isatty() and not args.no_input
     if args.interactive:
         prompt_missing(data, force_all=True)
     elif not data.get("title") and interactive:
         prompt_missing(data, force_all=False)
 
-    if not data.get("title"):
-        sys.exit("nfogen: a title is required (use --title, a config, or -i)")
 
-    text = render(data, group=group, site=site, width=width, style=style,
-                  presents=presents, footer=footer, layout=layout,
-                  logo=logo, roster=roster, panel_titles=panel_titles)
+def _resolve_logo(args, config: dict, group: str) -> str | None:
+    """An explicit art file wins; otherwise an optional generated banner."""
+    logo_path = args.logo or config.get("logo")
+    if logo_path:
+        enc = args.logo_encoding or config.get("logo_encoding") or "cp437"
+        try:
+            return Path(logo_path).read_text(encoding=enc, errors="replace")  # NOSONAR local CLI: the user's own path
+        except FileNotFoundError:
+            sys.exit(f"nfogen: logo not found: {logo_path}")
+    if _resolve(args.banner, config, "banner", False):
+        return banner(args.banner_text or config.get("banner_text") or group)
+    return None
 
+
+def _resolve_options(args, config: dict) -> dict:
+    group = args.group or config.get("group") or DEFAULT_GROUP
+    show_footer = _resolve(args.footer, config, "footer", False)
+    footer_text = args.footer_text or config.get("footer_text") or DEFAULT_FOOTER
+    return {
+        "group": group,
+        "site": args.site or config.get("site") or DEFAULT_SITE,
+        "width": args.width or config.get("width") or DEFAULT_WIDTH,
+        "style": args.style or config.get("style") or DEFAULT_STYLE,
+        "presents": _resolve(args.presents, config, "presents", False),
+        "footer": footer_text if show_footer else None,
+        "layout": args.layout or config.get("layout") or DEFAULT_LAYOUT,
+        "logo": _resolve_logo(args, config, group),
+        "roster": {k: config[k] for k in
+                   ("news", "members", "couriers", "boards", "affiliates", "outposts")
+                   if config.get(k)},
+        "panel_titles": (config.get("panel_left") or PANEL_TITLES[0],
+                         config.get("panel_right") or PANEL_TITLES[1]),
+    }
+
+
+def _write_output(text: str, args) -> None:
     if args.encoding == "cp437":
         raw = text.encode("cp437", errors="replace")
         if args.output:
-            Path(args.output).write_bytes(raw)
+            Path(args.output).write_bytes(raw)  # NOSONAR local CLI: the user's own path
         else:
             sys.stdout.buffer.write(raw)
     elif args.output:
-        Path(args.output).write_text(text, encoding="utf-8")
+        Path(args.output).write_text(text, encoding="utf-8")  # NOSONAR local CLI: the user's own path
     else:
         sys.stdout.write(text)
-    return 0
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = build_parser().parse_args(argv)
+
+    if args.list_templates:
+        names = _list_templates()
+        print("\n".join(names) if names else "nfogen: no templates bundled")
+        return
+
+    config = _layered_config(args)
+    data = _collect_data(args, config)
+    _fill_interactive(args, data)
+    if not data.get("title"):
+        sys.exit("nfogen: a title is required (use --title, a config, or -i)")
+
+    text = render(data, **_resolve_options(args, config))
+    _write_output(text, args)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()
