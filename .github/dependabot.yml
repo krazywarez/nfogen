@@ -5,7 +5,10 @@
 
 version: 2
 updates:
-  - package-ecosystem: "uv" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  # No Python ecosystem entry: nfogen is a single stdlib script with no
+  # manifest, so the previous "uv" entry tracked nothing. Actions are the only
+  # thing here with versions to bump.
+  - package-ecosystem: "github-actions"
+    directory: "/"
     schedule:
       interval: "weekly"
