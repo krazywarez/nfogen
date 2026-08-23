@@ -1,0 +1,42 @@
+name: Test
+
+# nfogen ships examples/*.toml next to the .nfo each one produces, which makes
+# them a golden fixture: regenerate and compare. A change to layout, banner or
+# encoding that was not intended shows up as a diff in a committed file rather
+# than in someone's release notes.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # 3.11+ for tomllib, which nfogen needs to read a .toml config at all.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+
+      - name: Syntax
+        run: python -m compileall -q nfogen.py
+
+      - name: Examples regenerate byte for byte
+        run: |
+          set -euo pipefail
+          fail=0
+          for toml in examples/*.toml; do
+            base="$(basename "$toml" .toml)"
+            [ -f "examples/$base.nfo" ] || continue
+            python nfogen.py -c "$toml" -o "/tmp/$base.nfo" --no-input
+            if ! diff -u "examples/$base.nfo" "/tmp/$base.nfo"; then
+              echo "::error file=examples/$base.nfo::regenerated output differs from the committed example"
+              fail=1
+            fi
+          done
+          exit "$fail"
