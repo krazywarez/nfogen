@@ -12,6 +12,7 @@ import json
 import subprocess
 import sys
 import textwrap
+from dataclasses import dataclass
 from datetime import date
 from itertools import zip_longest
 from pathlib import Path
@@ -505,20 +506,32 @@ def _render_footer(cvs: _Canvas, footer: str | None) -> None:
     cvs.add(cvs.line())
 
 
-def render(data: dict, group: str, site: str, width: int,
-           style: str = DEFAULT_STYLE, presents: bool = False,
-           footer: str | None = None, layout: str = DEFAULT_LAYOUT,
-           logo: str | None = None, roster: dict | None = None,
-           panel_titles: tuple[str, str] = PANEL_TITLES) -> str:
-    cvs = _Canvas(width, style)
-    _render_logo(cvs, logo)
+@dataclass
+class RenderOptions:
+    """How an .nfo is laid out, as resolved from flags and config."""
+
+    group: str = DEFAULT_GROUP
+    site: str = DEFAULT_SITE
+    width: int = DEFAULT_WIDTH
+    style: str = DEFAULT_STYLE
+    presents: bool = False
+    footer: str | None = None
+    layout: str = DEFAULT_LAYOUT
+    logo: str | None = None
+    roster: dict | None = None
+    panel_titles: tuple[str, str] = PANEL_TITLES
+
+
+def render(data: dict, opts: RenderOptions) -> str:
+    cvs = _Canvas(opts.width, opts.style)
+    _render_logo(cvs, opts.logo)
     cvs.add(cvs.hrule(cvs.s["tl"], cvs.s["tr"]))
-    _render_header(cvs, data, group, site, presents)
-    _render_info(cvs, data, layout, panel_titles)
+    _render_header(cvs, data, opts.group, opts.site, opts.presents)
+    _render_info(cvs, data, opts.layout, opts.panel_titles)
     _render_notes(cvs, data)
     _render_greets(cvs, data)
-    _render_roster(cvs, roster)
-    _render_footer(cvs, footer)
+    _render_roster(cvs, opts.roster)
+    _render_footer(cvs, opts.footer)
     cvs.add(cvs.hrule(cvs.s["bl"], cvs.s["br"],
                       cvs.s["jb"] if cvs.prev_panel else None))
     return "\n".join(cvs.out) + "\n"
@@ -641,25 +654,25 @@ def _resolve_logo(args, config: dict, group: str) -> str | None:
     return None
 
 
-def _resolve_options(args, config: dict) -> dict:
+def _resolve_options(args, config: dict) -> RenderOptions:
     group = args.group or config.get("group") or DEFAULT_GROUP
     show_footer = _resolve(args.footer, config, "footer", False)
     footer_text = args.footer_text or config.get("footer_text") or DEFAULT_FOOTER
-    return {
-        "group": group,
-        "site": args.site or config.get("site") or DEFAULT_SITE,
-        "width": args.width or config.get("width") or DEFAULT_WIDTH,
-        "style": args.style or config.get("style") or DEFAULT_STYLE,
-        "presents": _resolve(args.presents, config, "presents", False),
-        "footer": footer_text if show_footer else None,
-        "layout": args.layout or config.get("layout") or DEFAULT_LAYOUT,
-        "logo": _resolve_logo(args, config, group),
-        "roster": {k: config[k] for k in
-                   ("news", "members", "couriers", "boards", "affiliates", "outposts")
-                   if config.get(k)},
-        "panel_titles": (config.get("panel_left") or PANEL_TITLES[0],
-                         config.get("panel_right") or PANEL_TITLES[1]),
-    }
+    return RenderOptions(
+        group=group,
+        site=args.site or config.get("site") or DEFAULT_SITE,
+        width=args.width or config.get("width") or DEFAULT_WIDTH,
+        style=args.style or config.get("style") or DEFAULT_STYLE,
+        presents=_resolve(args.presents, config, "presents", False),
+        footer=footer_text if show_footer else None,
+        layout=args.layout or config.get("layout") or DEFAULT_LAYOUT,
+        logo=_resolve_logo(args, config, group),
+        roster={k: config[k] for k in
+                ("news", "members", "couriers", "boards", "affiliates", "outposts")
+                if config.get(k)},
+        panel_titles=(config.get("panel_left") or PANEL_TITLES[0],
+                      config.get("panel_right") or PANEL_TITLES[1]),
+    )
 
 
 def _write_output(text: str, args) -> None:
@@ -689,7 +702,7 @@ def main(argv: list[str] | None = None) -> None:
     if not data.get("title"):
         sys.exit("nfogen: a title is required (use --title, a config, or -i)")
 
-    text = render(data, **_resolve_options(args, config))
+    text = render(data, _resolve_options(args, config))
     _write_output(text, args)
 
 
